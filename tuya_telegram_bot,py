@@ -1,0 +1,120 @@
+import telebot
+import tinytuya
+import time
+
+# Set the API token for your bot
+TOKEN = 'XXXXXXXXXXXXXXXXXXXXXXXX'
+
+# Set the allowed user IDs for your bot
+ALLOWED_USER_IDS = [XXXXXXXXXXXX, XXXXXXXXXXXX]  # Replace with your own IDs
+
+# Set the device ID, IP address, and local key for your Tuya device
+DEVICE_ID = 'xxxxxxxxxxxxx'
+DEVICE_IP = 'XXX.XXX.XXX.XXX'
+DEVICE_KEY = 'xxxxxxxxxxxx'
+
+# Define device state constants
+DEVICE_STATE_ON = 1
+DEVICE_STATE_OFF = 0
+
+# Create a Tuya device instance
+device = tinytuya.OutletDevice(
+    dev_id=DEVICE_ID,
+    address=DEVICE_IP,
+    local_key=DEVICE_KEY,
+    version=3.3
+)
+
+# Create a Telegram bot instance
+bot = telebot.TeleBot(TOKEN)
+
+
+# Function to check if a user is allowed to interact with the bot
+def is_allowed_user(message):
+    return message.chat.id in ALLOWED_USER_IDS
+
+
+# Handler for the /start command
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    if is_allowed_user(message):
+        bot.send_message(message.chat.id,
+                         "Commands:\n"
+                         "/status - get the current device status\n"
+                         "/on - turn the device on\n"
+                         "/off - turn the device off\n"
+                         "/timer - set a timer for the device to turn off")
+
+
+# Handler for the /status command
+@bot.message_handler(commands=['status'])
+def run_status(message):
+    if is_allowed_user(message):
+        try:
+            data = device.status()
+            if data['dps']['1']:
+                bot.send_message(message.chat.id, "Current device state: On")
+            else:
+                bot.send_message(message.chat.id, "Current device state: Off")
+        except Exception as e:
+            bot.send_message(message.chat.id, f"Error: {str(e)}")
+
+
+
+# Handler for the /on command
+@bot.message_handler(commands=['on'])
+def run_on(message):
+    if is_allowed_user(message):
+        try:
+            data = device.status()
+            if data['dps']['1'] != DEVICE_STATE_ON:
+                device.turn_on()
+                bot.send_message(message.chat.id, "Device turned on")
+            else:
+                bot.send_message(message.chat.id, "Device is already on")
+        except Exception as e:
+            bot.send_message(message.chat.id, f"An error occurred: {e}")
+
+# Handler for the /off command
+@bot.message_handler(commands=['off'])
+def run_off(message):
+    if is_allowed_user(message):
+        try:
+            data = device.status()
+            if data['dps']['1'] != DEVICE_STATE_OFF:
+                device.turn_off()
+                bot.send_message(message.chat.id, "Device turned off")
+            else:
+                bot.send_message(message.chat.id, "Device is already off")
+        except Exception as e:
+            bot.send_message(message.chat.id, f"An error occurred: {e}")
+            
+# Handler for the /timer command
+@bot.message_handler(commands=['timer'])
+def run_timer(message):
+    if is_allowed_user(message):
+        data = device.status()
+        if data['dps']['1']:
+            bot.send_message(message.chat.id, "Input time in minutes:")
+            bot.register_next_step_handler(message, run_timer_with_arg4)
+        else:
+            bot.send_message(message.chat.id, "Device is currently off. Timer cannot be set.")
+
+# Function to execute the timer command with the specified argument
+def run_timer_with_arg4(message):
+    arg4 = message.text
+    try:
+        seconds = int(arg4) * 60
+        if seconds <= 0:
+            bot.send_message(message.chat.id, "Invalid time value")
+        else:
+            bot.send_message(message.chat.id, f"Ok. Shutdown in {arg4} minutes.")
+            time.sleep(seconds)
+            device.turn_off()
+            bot.send_message(message.chat.id, "Device turned off")
+    except ValueError:
+        bot.send_message(message.chat.id, "Invalid input format. Please enter a valid number of minutes.")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"An error occurred: {e}")
+
+bot.polling()
